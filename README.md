@@ -18,6 +18,8 @@ Then, I decided to use mel spectrograms as a representation of the WAV files. Th
 
 Finally, some data augmentation was applied to make the algorithm more robust to noise and silence.
 
+![alt text](https://github.com/GauthierDmn/tf_speech_recognition/blob/master/wav_mel_spec.png)
+
 # Algorithm
 
 I used a VGG-like algorithm, which demonstrated great results in image processing.
