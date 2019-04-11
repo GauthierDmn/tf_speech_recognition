@@ -3,24 +3,25 @@ import pandas as pd
 import os
 from sklearn.preprocessing import LabelEncoder
 import librosa
+import torch
 from scipy.io import wavfile
 from scipy import signal
-from augmentation import data_transformer
+#from augmentation import data_transformer
 from config import train_audio_path, train_labels_path
 
 list_labels = ['yes', 'no', 'up', 'down', 'left', 'right', 'on', 'off', 'stop', 'go']
 
 
 def create_labels_csv(train_audio_path, train_labels_path):
-    #List the sub-folders
+    # List the sub-folders
     sub_folders = []
     for file in os.listdir(train_audio_path):
         if os.path.isdir(os.path.join(train_audio_path, file)):
             sub_folders.append(file)
     print(sub_folders)
 
-    columns = ['audio', 'label-str','path']
-    df_pred = pd.DataFrame(data=np.zeros((0,len(columns))), columns=columns)
+    columns = ['audio', 'label-str', 'path']
+    df_pred = pd.DataFrame(data=np.zeros((0, len(columns))), columns=columns)
 
     for i, label in enumerate(sub_folders):
         # get all the wave files
@@ -28,20 +29,20 @@ def create_labels_csv(train_audio_path, train_labels_path):
         for file in all_files:
             path = os.path.join(train_audio_path, label, file)
             if label in list_labels:
-                df_pred = df_pred.append({'audio':file, 'label-str':label,'path':path}, ignore_index=True)
+                df_pred = df_pred.append({'audio': file, 'label-str': label, 'path': path}, ignore_index=True)
             else:
                 df_pred = df_pred.append({'audio': file, 'label-str': 'unknown', 'path': path}, ignore_index=True)
 
 
-    #Encode the categorical labels as numeric data
+    # Encode the categorical labels as numeric data
     df_pred['label'] = LabelEncoder().fit_transform(df_pred['label-str'])
 
-    #Save dataframe as .csv file
+    # Save dataframe as .csv file
     df_pred.to_csv(os.path.join(train_labels_path, "train_labels.csv"), index=None)
 
 
 def resample_audio_file(samples, sample_rate, new_sample_rate=16000):
-    if sample_rate != 16000:
+    if sample_rate != new_sample_rate:
         samples = signal.resample(samples, int(new_sample_rate / sample_rate * samples.shape[0]))
     return samples, new_sample_rate
 
@@ -49,8 +50,8 @@ def resample_audio_file(samples, sample_rate, new_sample_rate=16000):
 def mel_spectrogram(audio_filename, resampled=True, max_len=1, normalize=True, augmentation=True):
     sample_rate, samples = wavfile.read(audio_filename)
 
-    if augmentation:
-        samples = data_transformer(samples)
+    #if augmentation:
+    #    samples = data_transformer(samples)
 
     if samples.shape[0] < sample_rate * max_len:
         reshaped_samples = np.zeros((sample_rate * max_len,))
@@ -74,6 +75,15 @@ def mel_spectrogram(audio_filename, resampled=True, max_len=1, normalize=True, a
             log_S /= std
 
     return log_S.T
+
+
+def save_checkpoint(state, is_best, filename="/output/checkpoint.pkl"):
+    """Save checkpoint if a new best is achieved"""
+    if is_best:
+        print("=> Saving a new best model.")
+        torch.save(state, filename)  # save checkpoint
+    else:
+        print("=> Validation loss did not improve.")
 
 
 if __name__ == "__main__":

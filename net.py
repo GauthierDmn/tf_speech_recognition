@@ -1,4 +1,9 @@
 import torch.nn as nn
+from pase.pase.models.frontend import wf_builder
+
+pase = wf_builder('pase/cfg/PASE.cfg')
+pase.eval()
+pase.load_pretrained('pase/PASE.ckpt', load_last=True, verbose=True)
 
 def _make_layers(cfg):
     layers = []
@@ -35,4 +40,18 @@ class VGG(nn.Module):
         out = out.view(out.size(0), -1)
         out = self.fc1(out)
         out = self.fc2(out)
+        return out
+
+
+class PASE(nn.Module):
+    def __init__(self):
+        super(PASE, self).__init__()
+        self.fc = nn.Linear(10000, 11)
+
+    def forward(self, x):
+        batch_zise = x.size(0)
+        enc = pase(x)
+        enc = enc.view(batch_zise, -1)
+        out = self.fc(enc)
+
         return out
