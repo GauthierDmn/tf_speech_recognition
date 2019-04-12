@@ -1,4 +1,4 @@
-train_path = "/Users/gdamien/Data/kaggle/tf-speech-recognition/train/"
+train_path = "/AZVOL/tf_speech_recognition/data/train/"
 train_audio_path = train_path + "audio/"
 train_labels_path = train_path + "labels/"
 

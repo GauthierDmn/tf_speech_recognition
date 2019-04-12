@@ -1,9 +1,9 @@
 import torch.nn as nn
 from pase.pase.models.frontend import wf_builder
 
-pase = wf_builder('pase/cfg/PASE.cfg')
+pase = wf_builder('pase/cfg/PASE.cfg').to("cuda")
 pase.eval()
-pase.load_pretrained('pase/PASE.ckpt', load_last=True, verbose=True)
+pase.load_pretrained('pase/PASE.ckpt', load_last=True)
 
 def _make_layers(cfg):
     layers = []
