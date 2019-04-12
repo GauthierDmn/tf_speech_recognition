@@ -1,6 +1,5 @@
 import torch
 import torch.nn as nn
-import torch.autograd as autograd
 from torch.utils.data.sampler import SubsetRandomSampler
 from torch.utils.data import DataLoader
 import numpy as np
@@ -8,7 +7,7 @@ import pandas as pd
 import os
 import logging
 
-from net import VGG, PASE
+from net import VGG, PaseDNN, PaseLSTM
 import config
 from data_loader import AudioDataset, PaseDataset
 from preprocess import save_checkpoint
@@ -21,14 +20,16 @@ logger.propagate = False
 
 
 # Hyper Parameters
-num_epochs = 5
-batch_size = 64
-valid_size = 0.1
-learning_rate = 0.0001
-cuda = True
-is_pase = True
+hyper_params = {
+    "num_epochs": config.num_epochs,
+    "batch_size": config.batch_size,
+    "valid_size": config.valid_size,
+    "learning_rate": config.learning_rate,
+    "cuda": config.cuda,
+    "pase_embedding": config.pase_embedding,
+}
 
-device = torch.device("cuda") if cuda else torch.device("cpu")
+device = torch.device("cuda") if hyper_params["cuda"] else torch.device("cpu")
 
 # Define a path to save experiment logs
 experiment_path = "output/{}".format(config.exp)
@@ -41,7 +42,7 @@ dataframe = pd.read_csv(os.path.join(config.train_labels_path, "train_labels.csv
 print("Set of labels is:", set(dataframe["label"].tolist()))
 
 print("Creating dataset...")
-if is_pase:
+if hyper_params["pase_embedding"]:
     audio_dataset = PaseDataset(dataframe)
 else:
     audio_dataset = AudioDataset(dataframe)
@@ -50,7 +51,7 @@ print("Dataset sucessfully loaded!")
 # Define a split for train/valid
 num_train = len(dataframe)
 indices = list(range(num_train))
-split = int(np.floor(valid_size * num_train))
+split = int(np.floor(hyper_params["valid_size"] * num_train))
 
 train_idx, valid_idx = indices[split:], indices[:split]
 
@@ -60,21 +61,21 @@ valid_sampler = SubsetRandomSampler(valid_idx)
 print("Loading dataloader...")
 train_dataloader = DataLoader(audio_dataset,
                         shuffle=False,
-                        batch_size=batch_size,
+                        batch_size=hyper_params["batch_size"],
                         sampler=train_sampler)
 
 valid_dataloader = DataLoader(audio_dataset,
                         shuffle=False,
-                        batch_size=batch_size,
+                        batch_size=hyper_params["batch_size"],
                         sampler=valid_sampler)
 print("Dataloader sucessfully loaded!")
 
 print("Length of training data loader is:", len(train_dataloader))
-print("Length of valid data loader is:", len(train_dataloader))
+print("Length of valid data loader is:", len(valid_dataloader))
 
 print("Loading model...")
-if is_pase:
-    model = PASE()
+if hyper_params["pase_embedding"]:
+    model = PaseLSTM(50)
 else:
     model = VGG('VGG11')
 model.to(device)
@@ -82,14 +83,14 @@ print("Model successfully loaded!")
 
 # Loss and Optimizer
 criterion = nn.CrossEntropyLoss()
-optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate, weight_decay=5e-5)
+optimizer = torch.optim.Adam(model.parameters(), lr=hyper_params["learning_rate"], weight_decay=5e-5)
 
 # Train the Model
 losses = []
 best_valid_loss = 100
-for epoch in range(num_epochs):
+for epoch in range(hyper_params["num_epochs"]):
     model.train()
-    print("##### epoch {:2d}".format(epoch))
+    print("##### epoch {:2d}".format(epoch + 1))
     for i, batch in enumerate(train_dataloader):
         x = batch[0].unsqueeze(1).float().to(device)
         score = batch[1].long().to(device)
@@ -100,9 +101,9 @@ for epoch in range(num_epochs):
         loss.backward()
         optimizer.step()
 
-        #if (i + 1) % 1 == 0:
-        #    print('Epoch [%d/%d], Iter [%d/%d] Loss: %.4f'
-        #          % (epoch + 1, num_epochs, i + 1, len(train_dataloader), loss.item()))
+        if (i + 1) % 1 == 0:
+            print('Epoch [%d/%d], Iter [%d/%d] Loss: %.4f'
+                  % (epoch + 1, hyper_params["num_epochs"], i + 1, len(train_dataloader), loss.item()))
 
     model.eval()
     valid_losses = 0
@@ -116,7 +117,7 @@ for epoch in range(num_epochs):
             pred = model(x)
             loss = criterion(pred, score)
             valid_losses += loss.item()
-            if cuda:
+            if hyper_params["cuda"]:
                 preds = np.argmax(pred.cpu().numpy(), axis=1)
                 acc += sum([1 if p == y else 0 for p, y in zip(preds, score.cpu().numpy())])
             else:

@@ -1,9 +1,20 @@
+import torch
 import torch.nn as nn
+import torch.nn.functional as F
+
+import config
 from pase.pase.models.frontend import wf_builder
 
-pase = wf_builder('pase/cfg/PASE.cfg').to("cuda")
+device = torch.device("cuda") if config.cuda else torch.device("cpu")
+
+pase = wf_builder("pase/cfg/PASE.cfg").to(device)
 pase.eval()
-pase.load_pretrained('pase/PASE.ckpt', load_last=True)
+pase.load_pretrained("pase/PASE.ckpt", load_last=True)
+
+if config.freeze:
+    for param in pase.parameters():
+        param.requires_grad = False
+
 
 def _make_layers(cfg):
     layers = []
@@ -43,9 +54,41 @@ class VGG(nn.Module):
         return out
 
 
-class PASE(nn.Module):
+class RNNEncoder(nn.Module):
+    """General-purpose layer for encoding a sequence using a bidirectional RNN.
+    Encoded output is the RNN's hidden state at each position, which
+    has shape `(batch_size, seq_len, hidden_size * 2)`.
+    Args:
+        input_size (int): Size of a single timestep in the input.
+        hidden_size (int): Size of the RNN hidden state.
+        num_layers (int): Number of layers of RNN cells to use.
+        drop_prob (float): Probability of zero-ing out activations.
+    """
+    def __init__(self,
+                 input_size,
+                 hidden_size,
+                 num_layers,
+                 drop_prob=0.):
+        super(RNNEncoder, self).__init__()
+        self.drop_prob = drop_prob
+        self.rnn = nn.LSTM(input_size, hidden_size, num_layers,
+                           batch_first=True,
+                           bidirectional=True,
+                           dropout=drop_prob if num_layers > 1 else 0.)
+
+    def forward(self, x):
+        # Apply RNN
+        x, _ = self.rnn(x)  # (batch_size, seq_len, 2 * hidden_size)
+
+        # Apply dropout (RNN applies dropout after all but the last layer)
+        x = F.dropout(x, self.drop_prob, self.training)
+
+        return x
+
+
+class PaseDNN(nn.Module):
     def __init__(self):
-        super(PASE, self).__init__()
+        super(PaseDNN, self).__init__()
         self.fc = nn.Linear(10000, 11)
 
     def forward(self, x):
@@ -53,5 +96,24 @@ class PASE(nn.Module):
         enc = pase(x)
         enc = enc.view(batch_zise, -1)
         out = self.fc(enc)
+
+        return out
+
+
+class PaseLSTM(nn.Module):
+    def __init__(self, hidden_size):
+        super(PaseLSTM, self).__init__()
+        self.enc = RNNEncoder(input_size=100,
+                              hidden_size=hidden_size,
+                              num_layers=1,
+                              drop_prob=0.)
+        self.fc = nn.Linear(10000, 11)
+
+    def forward(self, x):
+        batch_size = x.size(0)
+        x = pase(x)
+        x = self.enc(x)
+        x = x.reshape(batch_size, -1)
+        out = self.fc(x)
 
         return out
